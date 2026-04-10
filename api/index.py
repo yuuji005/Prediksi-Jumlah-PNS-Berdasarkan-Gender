@@ -58,31 +58,36 @@ def index():
 def predict():
 
     if model is None or scaler is None:
-        return jsonify({"error": "Model tidak terbaca"}), 500
+        return jsonify({"error": "Model tidak ditemukan"}), 500
 
     try:
-        # 🔥 VERCEL WAJIB JSON
         data = request.get_json()
 
-        if not data:
-            return jsonify({"error": "JSON kosong"}), 400
+        if not data or "tahun" not in data:
+            return jsonify({"error": "Input tahun tidak ada"}), 400
 
         tahun_val = int(data["tahun"])
 
-        # estimasi laki-laki
-        laki_estimasi = 4500 + (tahun_val - 2015) * 200
+        # ===============================
+        # FIX: MODEL HANYA 1 FEATURE
+        # ===============================
+        input_data = np.array([[tahun_val]])
 
-        input_data = np.array([[tahun_val, laki_estimasi]])
+        # scaling
         input_scaled = scaler.transform(input_data)
 
+        # predict
         prediction = model.predict(input_scaled)
 
         perempuan_pred = float(prediction[0])
 
+        # estimasi laki-laki (hanya visual)
+        laki_estimasi = 4500 + (tahun_val - 2015) * 200
+
         return jsonify({
             "status": "success",
             "tahun": tahun_val,
-            "laki_laki": laki_estimasi,
+            "laki_laki": float(laki_estimasi),
             "perempuan": round(perempuan_pred,2)
         })
 
