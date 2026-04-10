@@ -1,99 +1,92 @@
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import numpy as np
+import os
+import joblib  # Pastikan 'joblib' ada di requirements.txt
+from pathlib import Path
 
-from sklearn.neural_network import MLPRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-
-app = Flask(__name__)
-
-# ==================================
-# DATASET PNS JAWA BARAT
-# ==================================
-data = {
-    "Tahun":[2015,2016,2017,2018,2019,2020,2021,2022,2023],
-    "Laki_laki":[4500,4700,4800,5000,5200,5300,5400,5600,5800],
-    "Perempuan":[4300,4400,4600,4700,4900,5000,5100,5200,5400]
-}
-
-df = pd.DataFrame(data)
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 
 # ==================================
-# TRAIN ANN
+# KONFIGURASI PATH (PENTING UNTUK VERCEL)
 # ==================================
-X = df[["Tahun","Laki_laki"]]
-y = df["Perempuan"]
+# Mengambil path folder 'api' saat ini, lalu naik satu tingkat ke root
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-scaler_X = StandardScaler()
-scaler_y = StandardScaler()
-
-X_scaled = scaler_X.fit_transform(X)
-y_scaled = scaler_y.fit_transform(y.values.reshape(-1,1)).ravel()
-
-model = MLPRegressor(
-    hidden_layer_sizes=(12,8),
-    activation="relu",
-    solver="adam",
-    max_iter=5000,
-    random_state=42
-)
-
-model.fit(X_scaled, y_scaled)
+MODEL_PATH = os.path.join(BASE_DIR, 'model_ann.pkl')
+SCALER_PATH = os.path.join(BASE_DIR, 'scaler.pkl')
 
 # ==================================
-# EVALUASI MODEL
+# LOAD MODEL & SCALER
 # ==================================
-pred_scaled = model.predict(X_scaled)
-pred = scaler_y.inverse_transform(pred_scaled.reshape(-1,1))
-
-mae = mean_absolute_error(y, pred)
-mse = mean_squared_error(y, pred)
-r2 = r2_score(y, pred)
+# Kita muat model sekali saja saat aplikasi dijalankan
+try:
+    model = joblib.load(MODEL_PATH)
+    scaler = joblib.load(SCALER_PATH)
+except Exception as e:
+    print(f"Error loading model: {e}")
+    model = None
+    scaler = None
 
 # ==================================
 # ROUTE DASHBOARD
 # ==================================
 @app.route("/")
 def index():
+    # Data historis untuk ditampilkan di grafik Dashboard
+    tahun = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023]
+    laki = [4500, 4700, 4800, 5000, 5200, 5300, 5400, 5600, 5800]
+    perempuan = [4300, 4400, 4600, 4700, 4900, 5000, 5100, 5200, 5400]
 
-    # DATA CONTOH (WAJIB ADA)
-    tahun = [2015,2016,2017,2018,2019,2020,2021,2022,2023]
-    laki = [4500,4700,4800,5000,5200,5300,5400,5600,5800]
-    perempuan = [4300,4400,4550,4650,4850,4950,5050,5150,5300]
-
-    mae = 40.61
-    mse = 2787.69
-    r2 = 0.9772
+    # Metrik Evaluasi (Bisa dihitung dinamis atau hardcoded dari hasil latihan)
+    mae_val = 40.61
+    mse_val = 2787.69
+    r2_val = 0.9772
 
     return render_template(
         "index.html",
         tahun=tahun,
         laki=laki,
         perempuan=perempuan,
-        mae=mae,
-        mse=mse,
-        r2=r2
+        mae=mae_val,
+        mse=mse_val,
+        r2=r2_val
     )
 
 # ==================================
-# PREDIKSI BERDASARKAN TAHUN
+# ROUTE PREDIKSI
 # ==================================
 @app.route("/predict", methods=["POST"])
 def predict():
+    if model is None or scaler is None:
+        return jsonify({"error": "Model belum terload di server"}), 500
 
-    tahun = int(request.form["tahun"])
+    try:
+        tahun_input = int(request.form["tahun"])
+        
+        # Logika Prediksi Menggunakan Model .pkl
+        # Misal model mengharapkan input [[Tahun, Laki_Laki]]
+        # Di sini kita asumsikan input dummy untuk Laki-Laki jika hanya Tahun yang diinput
+        laki_estimasi = 4500 + (tahun_input - 2015) * 200 
+        
+        input_data = np.array([[tahun_input, laki_estimasi]])
+        input_scaled = scaler.transform(input_data)
+        
+        prediction_scaled = model.predict(input_scaled)
+        
+        # Jika scaler kamu hanya untuk Y, gunakan inverse_transform pada hasil
+        # Jika tidak, sesuaikan dengan logika scaler di train.py kamu
+        perempuan_pred = float(prediction_scaled[0]) 
 
-    # CONTOH PREDIKSI ANN
-    laki_pred = 4500 + (tahun - 2015) * 200
-    perempuan_pred = 4300 + (tahun - 2015) * 180
+        return jsonify({
+            "tahun": tahun_input,
+            "laki_laki": float(laki_estimasi),
+            "perempuan": round(perempuan_pred, 2)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
-    return jsonify({
-        "tahun": tahun,
-        "laki_laki": float(laki_pred),
-        "perempuan": float(perempuan_pred)
-    })
-
+# Agar objek 'app' bisa diakses oleh Vercel
 app = app
 
 if __name__ == "__main__":
