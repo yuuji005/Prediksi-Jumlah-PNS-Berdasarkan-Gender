@@ -5,7 +5,7 @@ import joblib
 from pathlib import Path
 
 # ==================================
-# FLASK CONFIG (WAJIB UNTUK VERCEL)
+# FLASK CONFIG (WAJIB VERCEL)
 # ==================================
 app = Flask(
     __name__,
@@ -14,7 +14,7 @@ app = Flask(
 )
 
 # ==================================
-# PATH MODEL
+# LOAD MODEL
 # ==================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -32,27 +32,32 @@ except Exception as e:
     print("❌ ERROR LOAD MODEL:", e)
 
 # ==================================
-# HALAMAN UTAMA
+# DATA HISTORIS
+# ==================================
+tahun_hist = [2015,2016,2017,2018,2019,2020,2021,2022,2023]
+laki_hist = [4500,4700,4800,5000,5200,5300,5400,5600,5800]
+perempuan_hist = [4300,4400,4600,4700,4900,5000,5100,5200,5400]
+
+
+# ==================================
+# DASHBOARD
 # ==================================
 @app.route("/")
 def index():
 
-    tahun = [2015,2016,2017,2018,2019,2020,2021,2022,2023]
-    laki = [4500,4700,4800,5000,5200,5300,5400,5600,5800]
-    perempuan = [4300,4400,4600,4700,4900,5000,5100,5200,5400]
-
     return render_template(
         "index.html",
-        tahun=tahun,
-        laki=laki,
-        perempuan=perempuan,
+        tahun=tahun_hist,
+        laki=laki_hist,
+        perempuan=perempuan_hist,
         mae=40.61,
         mse=2787.69,
         r2=0.9772
     )
 
+
 # ==================================
-# API PREDICT (FIX VERCEL)
+# PREDICT API (FINAL FIX)
 # ==================================
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -61,33 +66,44 @@ def predict():
         return jsonify({"error": "Model tidak ditemukan"}), 500
 
     try:
-        data = request.get_json()
+        # ✅ SUPPORT FORM + JSON
+        tahun_input = request.form.get("tahun")
 
-        if not data or "tahun" not in data:
-            return jsonify({"error": "Input tahun tidak ada"}), 400
+        if tahun_input is None:
+            json_data = request.get_json(silent=True)
+            if json_data:
+                tahun_input = json_data.get("tahun")
 
-        tahun_val = int(data["tahun"])
+        if not tahun_input:
+            return jsonify({"error": "Input tahun kosong"}), 400
 
-        # ===============================
-        # FIX: MODEL HANYA 1 FEATURE
-        # ===============================
+        tahun_val = int(tahun_input)
+
+        # ==================================
+        # MODEL INPUT (1 FEATURE)
+        # ==================================
         input_data = np.array([[tahun_val]])
-
-        # scaling
         input_scaled = scaler.transform(input_data)
 
-        # predict
-        prediction = model.predict(input_scaled)
+        perempuan_pred = float(model.predict(input_scaled)[0])
 
-        perempuan_pred = float(prediction[0])
+        # ==================================
+        # ESTIMASI LAKI-LAKI (SMOOTH)
+        # ==================================
+        growth = np.mean(np.diff(laki_hist))
+        laki_estimasi = laki_hist[-1] + (
+            tahun_val - tahun_hist[-1]
+        ) * growth
 
-        # estimasi laki-laki (hanya visual)
-        laki_estimasi = 4500 + (tahun_val - 2015) * 200
+        # ==================================
+        # ANTI GRAFIK ANJLOK
+        # ==================================
+        perempuan_pred = max(perempuan_hist[-1], perempuan_pred)
 
         return jsonify({
             "status": "success",
             "tahun": tahun_val,
-            "laki_laki": float(laki_estimasi),
+            "laki_laki": round(float(laki_estimasi),2),
             "perempuan": round(perempuan_pred,2)
         })
 
