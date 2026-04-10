@@ -1,4 +1,5 @@
-Flask
-numpy
+flask
 scikit-learn
+pandas
+numpy
 joblib
