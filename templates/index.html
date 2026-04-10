@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <title>Dashboard Prediksi PNS Jabar</title>
+
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <style>
 
@@ -83,6 +83,7 @@ background:#f7f9ff;
 padding:12px;
 border-left:5px solid #294a9b;
 border-radius:8px;
+display:none;
 }
 
 .metric-container{
@@ -101,12 +102,8 @@ color:#294a9b;
 }
 
 @media(max-width:900px){
-.grid{
-grid-template-columns:1fr;
-}
-.metric-container{
-grid-template-columns:1fr;
-}
+.grid{grid-template-columns:1fr;}
+.metric-container{grid-template-columns:1fr;}
 }
 
 </style>
@@ -117,9 +114,7 @@ grid-template-columns:1fr;
 <div class="container">
 
 <h1>📊 Prediksi Jumlah PNS Berdasarkan Gender</h1>
-<p class="subtitle">
-Analisis Prediksi ANN PNS Jawa Barat
-</p>
+<p class="subtitle">Analisis Prediksi ANN PNS Jawa Barat</p>
 
 <div class="grid">
 
@@ -131,11 +126,11 @@ Analisis Prediksi ANN PNS Jawa Barat
 <label>Input Tahun Prediksi</label>
 <input type="number" id="tahun" placeholder="Contoh: 2025">
 
-<button id="prediksiBtn">
+<button onclick="jalankanPrediksi()">
 JALANKAN ANALISIS
 </button>
 
-<div id="hasilPrediksi" class="hasil" style="display:none;">
+<div id="hasilPrediksi" class="hasil">
 <p><b>Tahun :</b> <span id="outTahun"></span></p>
 <p style="color:blue;"><b>PNS Laki-laki :</b> <span id="outLaki"></span></p>
 <p style="color:red;"><b>PNS Perempuan :</b> <span id="outPerempuan"></span></p>
@@ -143,7 +138,7 @@ JALANKAN ANALISIS
 
 </div>
 
-<!-- CHART PREDIKSI -->
+<!-- CHART -->
 <div class="chart-box">
 
 <h3>Visualisasi Prediksi Tahunan</h3>
@@ -156,15 +151,12 @@ JALANKAN ANALISIS
 
 </div>
 
-<!-- CHART AKURASI -->
+<!-- AKURASI -->
 <div class="chart-box" style="margin-top:20px;">
-
 <h3>Tingkat Akurasi Model ANN</h3>
-
 <div class="chart-container">
 <canvas id="chartAkurasi"></canvas>
 </div>
-
 </div>
 
 <!-- METRIC -->
@@ -172,17 +164,17 @@ JALANKAN ANALISIS
 
 <div class="chart-box metric">
 <h4>MAE</h4>
-<h2 id="mae">{{ mae }}</h2>
+<h2>{{ mae }}</h2>
 </div>
 
 <div class="chart-box metric">
 <h4>MSE</h4>
-<h2 id="mse">{{ mse }}</h2>
+<h2>{{ mse }}</h2>
 </div>
 
 <div class="chart-box metric">
 <h4>R-Squared</h4>
-<h2 id="r2">{{ r2 }}</h2>
+<h2>{{ r2 }}</h2>
 </div>
 
 </div>
@@ -191,6 +183,7 @@ JALANKAN ANALISIS
 
 <script>
 
+/* DATA AWAL */
 let tahun = {{ tahun | safe }};
 let laki = {{ laki | safe }};
 let perempuan = {{ perempuan | safe }};
@@ -210,29 +203,21 @@ datasets:[
 label:'PNS Laki-laki',
 data:laki,
 borderColor:'blue',
-backgroundColor:'blue',
 tension:0.3
 },
 {
 label:'PNS Perempuan',
 data:perempuan,
 borderColor:'red',
-backgroundColor:'red',
 tension:0.3
 }
 ]
 },
-options:{
-responsive:true,
-maintainAspectRatio:false,
-plugins:{
-legend:{position:'top'}
-}
-}
+options:{responsive:true,maintainAspectRatio:false}
 });
 
 /* CHART AKURASI */
-const chartAkurasi = new Chart(
+new Chart(
 document.getElementById('chartAkurasi'),
 {
 type:'bar',
@@ -243,42 +228,59 @@ data:[mae,mse,r2],
 backgroundColor:['#4e73df','#1cc88a','#f6c23e']
 }]
 },
-options:{
-responsive:true,
-maintainAspectRatio:false,
-plugins:{legend:{display:false}}
-}
+options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}
 });
 
-/* BUTTON PREDIKSI */
-$("#prediksiBtn").click(function(){
+/* =========================
+   🔥 FIX VERCEL PREDICT
+=========================*/
+async function jalankanPrediksi(){
 
-let tahunInput=$("#tahun").val();
+const tahunInput=document.getElementById("tahun").value;
 
 if(!tahunInput){
 alert("Masukkan tahun terlebih dahulu!");
 return;
 }
 
-$.post("/predict",
-{tahun:tahunInput},
-function(res){
+try{
 
-$("#hasilPrediksi").show();
+const response = await fetch("/predict",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+tahun:tahunInput
+})
+});
 
-$("#outTahun").text(res.tahun);
-$("#outLaki").text(res.laki_laki.toFixed(2));
-$("#outPerempuan").text(res.perempuan.toFixed(2));
+const res = await response.json();
 
+if(res.status!=="success"){
+alert(res.error);
+return;
+}
+
+document.getElementById("hasilPrediksi").style.display="block";
+
+document.getElementById("outTahun").innerText=res.tahun;
+document.getElementById("outLaki").innerText=res.laki_laki.toFixed(2);
+document.getElementById("outPerempuan").innerText=res.perempuan.toFixed(2);
+
+/* update chart realtime */
 chartPrediksi.data.labels.push(res.tahun);
 chartPrediksi.data.datasets[0].data.push(res.laki_laki);
 chartPrediksi.data.datasets[1].data.push(res.perempuan);
 
 chartPrediksi.update();
 
-});
+}catch(err){
+alert("Server error");
+console.log(err);
+}
 
-});
+}
 
 </script>
 
